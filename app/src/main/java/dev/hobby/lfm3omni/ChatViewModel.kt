@@ -1,6 +1,8 @@
 package dev.hobby.lfm3omni
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -93,8 +95,21 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val f = withContext(Dispatchers.IO) {
                 val out = File(cacheDir, "${System.nanoTime()}.$ext")
-                getApplication<Application>().contentResolver.openInputStream(uri)?.use { i ->
-                    out.outputStream().use { o -> i.copyTo(o) }
+                if (kind == MediaKind.Image) {
+                    // Decode with the platform (handles HEIC/WebP/EXIF rotation), shrink so the
+                    // CPU vision encoder stays fast (~1 tile), and hand llama.cpp a plain JPEG.
+                    val src = ImageDecoder.createSource(getApplication<Application>().contentResolver, uri)
+                    val bmp = ImageDecoder.decodeBitmap(src) { dec, info, _ ->
+                        dec.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        val s = MAX_IMAGE_SIDE.toFloat() / maxOf(info.size.width, info.size.height)
+                        if (s < 1f) dec.setTargetSize((info.size.width * s).toInt().coerceAtLeast(1),
+                                                      (info.size.height * s).toInt().coerceAtLeast(1))
+                    }
+                    out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                } else {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { i ->
+                        out.outputStream().use { o -> i.copyTo(o) }
+                    }
                 }
                 out
             }
@@ -132,7 +147,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             val rc = engine.generate(systemPrompt, prompt, atts.map { it.file.absolutePath }) { piece ->
                 reply.text += piece
             }
-            if (rc != 0) reply.text += "\n[error $rc]"
+            if (rc == 15) reply.text += "\n[stopped]" else if (rc != 0) reply.text += "\n[error $rc]"
             generating = false
         }
     }
@@ -147,5 +162,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         engine.stop()
+    }
+
+    private companion object {
+        const val MAX_IMAGE_SIDE = 512
     }
 }

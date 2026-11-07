@@ -109,6 +109,8 @@ Java_dev_hobby_lfm3omni_LfmEngine_nativeLoad(JNIEnv *env, jobject, jstring jmode
     g.lctx = llama_init_from_model(g.model, cp);
     if (!g.lctx) { LOGe("failed to create context"); return 2; }
     g.n_ctx = (int) llama_n_ctx(g.lctx);
+    // Lets Stop abort a decode that is in progress (e.g. a long prompt / image batch).
+    llama_set_abort_callback(g.lctx, [](void *) { return g.stop.load(); }, nullptr);
 
     mtmd_context_params mcp = mtmd_context_params_default();
     mcp.use_gpu = false;
@@ -194,11 +196,19 @@ Java_dev_hobby_lfm3omni_LfmEngine_nativeGenerate(JNIEnv *env, jobject, jstring j
         return 12;
     }
 
+    // Evaluate chunk by chunk so Stop can interrupt a long image/audio encode.
     llama_pos new_past = g.n_past;
-    if (mtmd_helper_eval_chunks(g.mctx, g.lctx, chunks.ptr.get(), g.n_past, 0, g.n_batch, true, &new_past) != 0) {
-        LOGe("eval failed");
-        clear_conversation();
-        return 13;
+    const size_t nChunks = mtmd_input_chunks_size(chunks.ptr.get());
+    for (size_t i = 0; i < nChunks; i++) {
+        if (g.stop) { clear_conversation(); return 15; }
+        const bool last = i + 1 == nChunks;
+        if (mtmd_helper_eval_chunk_single(g.mctx, g.lctx, mtmd_input_chunks_get(chunks.ptr.get(), i),
+                                          new_past, 0, g.n_batch, last, &new_past) != 0) {
+            if (g.stop) { clear_conversation(); return 15; }
+            LOGe("eval failed at chunk %zu/%zu", i, nChunks);
+            clear_conversation();
+            return 13;
+        }
     }
     g.n_past = new_past;
 
@@ -226,7 +236,7 @@ Java_dev_hobby_lfm3omni_LfmEngine_nativeGenerate(JNIEnv *env, jobject, jstring j
 
         batch.clear();
         batch.add(tok, g.n_past++, 0, true);
-        if (llama_process(g.lctx, LLAMA_PROCESS_TYPE_DECODE, batch.get())) { rc = 14; break; }
+        if (llama_process(g.lctx, LLAMA_PROCESS_TYPE_DECODE, batch.get())) { rc = g.stop ? 0 : 14; break; }
     }
 
     common_chat_msg asst;
