@@ -46,22 +46,30 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private var job: Job? = null
 
-    init { if (store.isReady()) loadModel() }
+    init {
+        if (store.isReady()) loadModel()
+        // The download itself runs in DownloadService; this only mirrors its state.
+        viewModelScope.launch {
+            DownloadState.flow.collect { s ->
+                when {
+                    s.running -> {
+                        phase = Phase.Downloading
+                        progress = if (s.total > 0) s.done.toFloat() / s.total else 0f
+                        status = "%.0f / %.0f MB".format(s.done / 1e6, s.total / 1e6)
+                    }
+                    s.finished -> if (phase == Phase.Downloading || phase == Phase.NeedDownload) loadModel()
+                    s.error != null -> {
+                        status = "Download failed: ${s.error}"
+                        phase = Phase.Error
+                    }
+                }
+            }
+        }
+    }
 
     fun download() {
         phase = Phase.Downloading
-        job = viewModelScope.launch {
-            try {
-                store.download { done, total, name ->
-                    progress = if (total > 0) done.toFloat() / total else 0f
-                    status = "%.0f / %.0f MB".format(done / 1e6, total / 1e6)
-                }
-                loadModel()
-            } catch (e: Exception) {
-                status = "Download failed: ${e.message}"
-                phase = Phase.Error
-            }
-        }
+        DownloadService.start(getApplication())
     }
 
     private fun loadModel() {
