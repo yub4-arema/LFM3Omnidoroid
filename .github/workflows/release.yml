@@ -19,9 +19,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
       - name: Install NDK / CMake
-        run: sdkmanager "ndk;29.0.13113456" "cmake;3.31.6" "platforms;android-36"
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null; "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.13113456" "cmake;3.31.6" "platforms;android-36"
       - name: Restore signing key
         run: |
           echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/lfm3omni.p12"
