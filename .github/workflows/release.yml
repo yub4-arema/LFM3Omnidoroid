@@ -28,7 +28,7 @@ jobs:
       - name: Build
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: ./gradlew --no-daemon assembleRelease
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
       - name: Name APK
         run: cp app/build/outputs/apk/release/app-release.apk "LFM3Omnidoroid-${GITHUB_REF_NAME}.apk"
       - name: Publish release
