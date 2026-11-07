@@ -185,7 +185,7 @@ Java_dev_hobby_lfm3omni_LfmEngine_nativeGenerate(JNIEnv *env, jobject, jstring j
     formatted += common_chat_format_single(g.tmpls.get(), g.history, user, true, true);
     g.history.push_back(user);
 
-    mtmd_input_text it{formatted.c_str(), /*add_special*/ g.n_past == 0, /*parse_special*/ true};
+    mtmd_input_text it{formatted.c_str(), formatted.size(), /*add_special*/ g.n_past == 0, /*parse_special*/ true};
     mtmd::input_chunks chunks(mtmd_input_chunks_init());
     auto bptr = bitmaps.c_ptr();
     if (mtmd_tokenize(g.mctx, chunks.ptr.get(), &it, bptr.data(), bptr.size()) != 0) {

@@ -13,8 +13,8 @@ android {
         applicationId = "dev.hobby.lfm3omni"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.1.1"
 
         ndk { abiFilters += listOf("arm64-v8a") }
         externalNativeBuild {
@@ -45,8 +45,28 @@ android {
             version = "3.31.6"
         }
     }
+    // Fixed release key so every update installs over the previous one (app data incl. the
+    // downloaded model survives). Supplied via env vars (CI) or ~/.android-keys (local).
+    val ksFile = System.getenv("KEYSTORE_FILE")
+        ?: File(System.getProperty("user.home"), ".android-keys/lfm3omni.p12").takeIf { it.exists() }?.path
+    val ksPass = System.getenv("KEYSTORE_PASSWORD")
+        ?: File(System.getProperty("user.home"), ".android-keys/lfm3omni.pw").takeIf { it.exists() }?.readText()?.trim()
+    signingConfigs {
+        if (ksFile != null && ksPass != null) {
+            create("release") {
+                storeFile = file(ksFile)
+                storeType = "pkcs12"
+                storePassword = ksPass
+                keyAlias = "lfm3omni"
+                keyPassword = ksPass
+            }
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
